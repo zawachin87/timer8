@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>4分割タイマー（複数背景画像）</title>
+<style>
+body {
+  margin: 0;
+  background-color: #444; /* 隙間の色 */
+  font-family: sans-serif;
+}
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 10px;
+  height: 100vh;
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+.timer, .empty {
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2em;
+  cursor: pointer;
+  transition: background-color 0.3s;
+  color: rgb(0, 0, 0);
+  position: relative;
+  overflow: hidden;
+}
+
+/* タイマー個別色＋複数背景画像 */
+.timer2 {
+  background-color: #1E90FF;
+  background-image: url('IMG_4347.png'), url('IMG_4352.png'), url('IMG_4350.png');
+  background-repeat: no-repeat, no-repeat, no-repeat;
+  background-size: 30% auto, 30% auto, 30% auto;
+  background-position: left center, center center, right center;
+}
+
+.timer3 {
+  background-color: #1E90FF;
+  background-image: url('IMG_4348.png'), url('IMG_4349.png');
+  background-repeat: no-repeat, no-repeat;
+  background-size: 45% auto, 45% auto;
+  background-position: left center, right center;
+}
+
+.timer1 {
+  background-color: #1E90FF;
+  background-image: url('IMG_4351.png');
+  background-repeat: no-repeat;
+  background-size: contain;
+  background-position: center;
+}
+
+.empty1 {
+  background-color: #1E90FF;
+  background-image: url('image7.jpg');
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+  font-size: 1.5em;
+}
+
+/* 実行中の色 */
+.timer1.running { background-color: #DA70D6; }
+.timer2.running { background-color: #DA70D6; }
+.timer3.running { background-color: #DA70D6; }
+.empty1.running { background-color: #DA70D6; }
+
+/* 秒数文字 */
+.time { color: rgb(255, 255, 255); font-size: 2em; font-weight: bold; }
+
+
+  /* ここから検索バー用CSS */
+  .site-title {
+    font-size: 2em;
+    font-weight: bold;
+    text-align: center;
+    margin: 20px 0 10px 0;
+  }
+
+.search-container {
+  position: relative;
+  margin: 20px;
+}
+
+.search-input {
+  width: 100%;
+  padding: 10px;
+  font-size: 16px;
+}
+
+.autocomplete-list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 25%;
+  border: 1px solid #ccc;
+  background: #fff;
+  max-height: 600px;
+  overflow-y: auto;
+  z-index: 1000;
+  display: grid;           /* グリッド表示にする */
+  grid-template-columns: repeat(2, 1fr); /* 2列に設定 */
+  gap: 10px;               /* アイテム間の隙間 */
+}
+
+.autocomplete-item {
+  display: flex;
+  align-items: center;
+  padding: 5px;
+  cursor: pointer;
+}
+
+.autocomplete-item:hover {
+  background-color: #eee;
+}
+
+.autocomplete-item img {
+  width: 80px;
+  height:80px;
+  margin-right: 10px;
+}
+
+.result-container {
+  margin-top: 20px;
+  padding: 10px;
+  border: 1px solid #ccc;
+  background-color: #f9f9f9;
+}
+
+</style>
+</head>
+<body>
+
+  <!-- サイトタイトル -->
+  <div class="site-title">第五人格 タイマー</div>
+
+  <!-- オートコンプリート検索バー -->
+  <div class="search-container">
+    <input type="text" class="search-input" placeholder="ハンターを入力" id="searchInput">
+    <div class="autocomplete-list" id="autocompleteList"></div>
+  </div>
+  <div class="result-container">
+  <p id="resultText">スキルクールタイム</p>
+</div>
+
+  <!-- 4分割タイマー -->
+<div class="grid">
+  <div class="timer timer1" data-time="150"><span class="time">150</span></div>
+  <div class="timer timer2" data-time="100"><span class="time">100</span></div>
+  <div class="timer timer3" data-time="90"><span class="time">90</span></div>
+  <div class="empty empty1">特質切り替え</div>
+</div>
+
+<script>
+const timers = document.querySelectorAll('.timer');
+const empty = document.querySelector('.empty');
+let runningTimer = null;
+
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function beep() {
+  // iOS対策（ユーザー操作後に有効化）
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+
+  // 🔊 音のキャラクター
+  osc.type = 'square';      // sine / square / triangle / sawtooth
+  osc.frequency.value = 880; // 音の高さ（Hz）
+
+  // 🔉 音量エンベロープ（ピッ感の肝）
+  gain.gain.setValueAtTime(0, audioCtx.currentTime);
+  gain.gain.linearRampToValueAtTime(0.15, audioCtx.currentTime + 0.01);
+  gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.08);
+
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+
+  osc.start();
+  osc.stop(audioCtx.currentTime + 0.1);
+}
+
+function startTimer(timer) {
+  if (timer.classList.contains('running')) return;
+
+  timer.classList.add('running');
+  runningTimer = timer;
+
+  timer.interval = setInterval(() => {
+    let timeEl = timer.querySelector('.time');
+    let t = Number(timeEl.textContent) - 1;
+    timeEl.textContent = t;
+
+    if (t <= 10 && t > 0) beep();
+
+    if (t <= 0) {
+      resetTimer(timer);
+    }
+  }, 1000);
+}
+
+function resetTimer(timer) {
+  clearInterval(timer.interval);
+  timer.classList.remove('running');
+  timer.querySelector('.time').textContent = timer.dataset.time;
+  if (runningTimer === timer) runningTimer = null;
+}
+
+/* 通常タイマーのタップ */
+timers.forEach(timer => {
+  timer.addEventListener('click', () => {
+    if (timer.classList.contains('running')) {
+      resetTimer(timer);
+    } else {
+      startTimer(timer);
+    }
+  });
+});
+
+/* 特質切り替え */
+empty.addEventListener('click', () => {
+  if (!runningTimer) return;
+
+  const current = runningTimer;
+  const currentOriginal = Number(current.dataset.time);
+  const currentRemaining = Number(current.querySelector('.time').textContent);
+
+  const progressRate =
+    (currentOriginal - currentRemaining) / currentOriginal;
+
+  timers.forEach(t => {
+    if (t !== current && !t.classList.contains('running')) {
+      const original = Number(t.dataset.time);
+      const newTime = Math.max(
+        0,
+        Math.floor(original * (1 - progressRate))
+      );
+      t.querySelector('.time').textContent = newTime;
+      startTimer(t);
+    }
+  });
+});
+
+
+// 検索バー処理（画像付き候補）
+const items = [
+  { name: "レオ", img: "reo.webp", description: "パペ投げクールタイム : 40秒" },
+  { name: "ピエロ", img: "piero.webp", description: "タイマー1の説明文" },
+  { name: "タイマー2", img: "img3.png", description: "タイマー1の説明文" },
+  { name: "レオ", img: "reo.webp", description: "パペ投げクールタイム : 40秒" },
+  { name: "ピエロ", img: "piero.webp", description: "タイマー1の説明文" },
+  { name: "タイマー2", img: "img3.png", description: "タイマー1の説明文" },
+  { name: "レオ", img: "reo.webp", description: "パペ投げクールタイム : 40秒" },
+  { name: "ピエロ", img: "piero.webp", description: "タイマー1の説明文" },
+  { name: "タイマー2", img: "img3.png", description: "タイマー1の説明文" },
+  { name: "レオ", img: "reo.webp", description: "パペ投げクールタイム : 40秒" },
+  { name: "ピエロ", img: "piero.webp", description: "タイマー1の説明文" },
+  { name: "タイマー2", img: "img3.png", description: "タイマー1の説明文" },
+  { name: "レオ", img: "reo.webp", description: "パペ投げクールタイム : 40秒" },
+  { name: "ピエロ", img: "piero.webp", description: "タイマー1の説明文" },
+  { name: "タイマー2", img: "img3.png", description: "タイマー1の説明文" },
+  { name: "空欄", img: "img4.png", description: "タイマー1の説明文" }
+];
+
+const searchInput = document.getElementById('searchInput');
+const autocompleteList = document.getElementById('autocompleteList');
+const resultText = document.getElementById('resultText');
+
+// フォーカス時に候補を表示
+searchInput.addEventListener('focus', () => showCandidates());
+
+// 入力時に絞り込みしない（削除）
+searchInput.addEventListener('input', () => { /* 入力時の処理は削除 */ });
+
+// フォーカス外れたら候補リストを消す
+searchInput.addEventListener('blur', () => {
+  setTimeout(() => { autocompleteList.innerHTML = ''; }, 100);
+});
+
+// 候補表示用の関数（絞り込みなし）
+function showCandidates() {
+  autocompleteList.innerHTML = "";
+  
+  items.forEach(item => {
+    const div = document.createElement('div');
+    div.classList.add('autocomplete-item');
+
+    const img = document.createElement('img');
+    img.src = item.img;
+    div.appendChild(img);
+
+    const span = document.createElement('span');
+    span.textContent = item.name;
+    div.appendChild(span);
+
+    // 画像をクリックしたときに対応する文字列を検索バーに反映
+    div.addEventListener('click', () => {
+      searchInput.value = item.name; // クリックしたアイテムの名前をセット
+      resultText.textContent = item.description; // 対応する説明を表示
+      autocompleteList.innerHTML = ''; // 候補リストを消す
+    });
+
+    autocompleteList.appendChild(div);
+  });
+}
+
+searchInput.addEventListener('focus', () => showCandidates(searchInput.value));
+searchInput.addEventListener('input', () => showCandidates(searchInput.value));
+searchInput.addEventListener('blur', () => setTimeout(() => { autocompleteList.innerHTML = ''; }, 100));
+</script>
+</body>
+</html>
